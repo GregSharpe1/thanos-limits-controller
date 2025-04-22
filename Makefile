@@ -5,9 +5,9 @@ CONTAINER_TAG ?= "test"
 ACTIVE_SERIES_MAX ?= 5
 CONFIGMAP_NAME ?= thanos-receive-limits
 CONFIGMAP_GENERATED_NAME ?= thanos-receive-limits-generated
-STATEFULSET_LABEL ?= thanos-limits-controller="true"
+STATEFULSET_LABEL ?= controller.limits.thanos.io="true"
 
-export LOG_LEVEL=info
+export LOG_LEVEL=debug
 export NAMESPACE=default
 
 container-build:

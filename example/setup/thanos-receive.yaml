@@ -4,10 +4,10 @@ metadata:
   name: thanos-statefulset
   labels:
     app: nginx
-    controller.limits.thanos.io: "thanos-limits-controller"
+    controller.limits.thanos.io: "true"
 spec:
   serviceName: "nginx"
-  replicas: 3
+  replicas: 5
   podManagementPolicy: Parallel
   selector:
     matchLabels:
@@ -23,3 +23,12 @@ spec:
         ports:
         - containerPort: 80
           name: web
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 60  # Wait 3 minutes before probing
+          periodSeconds: 10         # Retry every 10 seconds
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3

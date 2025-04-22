@@ -227,6 +227,7 @@ func (c *Controller) getRunningStatefulSets(labelSelector string) int {
 			sts.Name, sts.Status.ReadyReplicas, sts.Status.Replicas)
 	}
 
+	log.Debugf("Returned running replicas are: %d", runningReplicas)
 	return int(runningReplicas)
 }
 
