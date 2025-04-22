@@ -7,6 +7,10 @@ CONFIGMAP_NAME ?= thanos-receive-limits
 CONFIGMAP_GENERATED_NAME ?= thanos-receive-limits-generated
 STATEFULSET_LABEL ?= controller.limits.thanos.io="true"
 
+# Metrics
+METRICS_PORT ?= "9096"
+METRICS_PATH ?= "/metrics"
+
 export LOG_LEVEL=debug
 export NAMESPACE=default
 
@@ -35,4 +39,6 @@ run:
 		-configmap-generated-name $(CONFIGMAP_GENERATED_NAME) \
 		-statefulset-label $(STATEFULSET_LABEL) \
 		-active-series-max $(ACTIVE_SERIES_MAX) \
-		-interval 10s
+		-interval 10s \
+		-metrics-port $(METRICS_PORT) \
+		-metrics-path $(METRICS_PATH)

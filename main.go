@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,7 +34,32 @@ type CmdConfig struct {
 	ReceiverLabel          string
 	ActiveSeriesMax        int
 	Interval               time.Duration
+	MetricsPort            string
+	MetricsPath            string
 }
+
+var (
+	configMapUpdateTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "thanos_limits_configmap_updates_total",
+			Help: "Total number of ConfigMap updates performed by the controller",
+		},
+	)
+
+	configMapUpdateFailures = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "thanos_limits_configmap_update_failures_total",
+			Help: "Total number of ConfigMap update failures",
+		},
+	)
+
+	lastUpdateTime = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "thanos_limits_last_update_timestamp_seconds",
+			Help: "Timestamp of the last successful ConfigMap update",
+		},
+	)
+)
 
 // https://thanos.io/tip/components/receive.md/#understanding-the-configuration-file
 // Take an existing configmap as an input, and override (for now) the `write.global.samples_limit`
@@ -71,6 +99,10 @@ func parseFlags() CmdConfig {
 	flag.StringVar(&config.ReceiverLabel, "statefulset-label", "controller.limits.thanos.io=thanos-limits-controller", "The statefulset's label to watch by the controller.")
 	flag.IntVar(&config.ActiveSeriesMax, "active-series-max", 0, "The maximum the number that a single particular receive instance can handle.")
 	flag.DurationVar(&config.Interval, "interval", 0, "Optional interval for periodic reconciliation (e.g. 30s, 1m). If 0, runs once and exits.")
+
+	// Metrics arguments
+	flag.StringVar(&config.MetricsPort, "metrics-port", "8080", "Port to expose Prometheus metrics on.")
+	flag.StringVar(&config.MetricsPath, "metrics-path", "/metrics", "Path to expose Prometheus metrics on.")
 	flag.Parse()
 
 	return config
@@ -90,6 +122,8 @@ func (c CmdConfig) validate() error {
 }
 
 func init() {
+	prometheus.MustRegister(configMapUpdateTotal, configMapUpdateFailures, lastUpdateTime)
+
 	logLevelStr := os.Getenv("LOG_LEVEL")
 
 	if logLevelStr == "" {
@@ -128,6 +162,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	go func() {
+		http.Handle(cmdConfig.MetricsPath, promhttp.Handler())
+		addr := ":" + cmdConfig.MetricsPort
+		log.Infof("Starting metrics server at %s%s", addr, cmdConfig.MetricsPath)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			log.Fatalf("Failed to start metrics server: %v", err)
+		}
+	}()
+
 	execute := func() {
 		controller, err := NewController()
 		if err != nil {
@@ -145,8 +188,12 @@ func main() {
 
 		err = controller.createGeneratedConfigMap(cmdConfig.ConfigMapGeneratedName, cmdConfig.ConfigMapLimitsPath, limitsConfig, globalLimit)
 		if err != nil {
+			configMapUpdateFailures.Inc()
 			log.Fatalf("Failed to create or update configmap: %v", err)
 		}
+
+		configMapUpdateTotal.Inc()
+		lastUpdateTime.SetToCurrentTime()
 	}
 
 	if cmdConfig.Interval > 0 {
