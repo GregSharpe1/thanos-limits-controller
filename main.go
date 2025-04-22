@@ -41,22 +41,36 @@ type CmdConfig struct {
 var (
 	configMapUpdateTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "thanos_limits_configmap_updates_total",
+			Name: "thanos_receive_limits_configmap_updates_total",
 			Help: "Total number of ConfigMap updates performed by the controller",
 		},
 	)
 
 	configMapUpdateFailures = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "thanos_limits_configmap_update_failures_total",
+			Name: "thanos_receive_limits_configmap_update_failures_total",
 			Help: "Total number of ConfigMap update failures",
 		},
 	)
 
 	lastUpdateTime = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "thanos_limits_last_update_timestamp_seconds",
+			Name: "thanos_receive_limits_last_update_timestamp_seconds",
 			Help: "Timestamp of the last successful ConfigMap update",
+		},
+	)
+
+	currentRunningReplicas = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "thanos_receive_limits_current_running_replicas",
+			Help: "Total number of currently running replicas",
+		},
+	)
+
+	currentMaxActiveHeadSeries = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "thanos_receive_limits_current_global_active_head_series_limit",
+			Help: "Current maximum global active head series limit",
 		},
 	)
 )
@@ -122,7 +136,7 @@ func (c CmdConfig) validate() error {
 }
 
 func init() {
-	prometheus.MustRegister(configMapUpdateTotal, configMapUpdateFailures, lastUpdateTime)
+	prometheus.MustRegister(configMapUpdateTotal, configMapUpdateFailures, lastUpdateTime, currentRunningReplicas, currentMaxActiveHeadSeries)
 
 	logLevelStr := os.Getenv("LOG_LEVEL")
 
@@ -178,7 +192,9 @@ func main() {
 		}
 
 		runningReplicas := controller.getRunningStatefulSets(labelSelector)
+		currentRunningReplicas.Set(float64(runningReplicas))
 		globalLimit := runningReplicas * cmdConfig.ActiveSeriesMax
+		currentMaxActiveHeadSeries.Set(float64(globalLimit))
 		log.Debugf("Calculated global head_series_limit: %d", globalLimit)
 
 		limitsConfig, err := controller.getLimitsConfigMap(cmdConfig.ConfigMapName, cmdConfig.ConfigMapLimitsPath)
